@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Pipeline output artifacts
+pipeline_output.json
+test_output.json
+output.json
+*.json
+!tests/*.json
+
+# Environment variables
+.env
+.env.local
