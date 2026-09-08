@@ -9,7 +9,7 @@ import datetime
 import json
 import logging
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from auth import AuthManager
 
@@ -78,12 +78,37 @@ def load_data(records: List[Dict[str, Any]], output_path: str) -> None:
     logger.info("Successfully loaded data to %s", output_path)
 
 
-def run_pipeline(output_path: str = "pipeline_output.json", limit: int = 5) -> Dict[str, Any]:
+def run_pipeline(
+    output_path: str = "pipeline_output.json",
+    limit: int = 5,
+    exporter: str = "file",
+    bq_project: Optional[str] = None,
+    bq_dataset: Optional[str] = None,
+    bq_table: Optional[str] = None,
+) -> Dict[str, Any]:
     """Execute end-to-end data pipeline."""
     logger.info("Starting Data Pipeline execution...")
     auth = AuthManager()
     raw_data = extract_data(auth, limit=limit)
     transformed_data = transform_data(raw_data)
+
+    if exporter == "bigquery":
+        from exporters.bigquery_exporter import BigQueryExporter
+
+        bq_exp = BigQueryExporter(
+            project_id=bq_project,
+            dataset_id=bq_dataset,
+            table_id=bq_table,
+        )
+        export_details = bq_exp.export_records(transformed_data)
+        logger.info("Pipeline completed successfully with BigQuery export.")
+        return {
+            "status": "SUCCESS",
+            "exporter": "bigquery",
+            "record_count": len(transformed_data),
+            "details": export_details,
+        }
+
     load_data(transformed_data, output_path)
     logger.info("Pipeline completed successfully.")
     return {
@@ -110,8 +135,41 @@ def main() -> None:
         default=5,
         help="Number of records to generate/process (default: 5)",
     )
+    parser.add_argument(
+        "--exporter",
+        "-e",
+        type=str,
+        choices=["file", "bigquery"],
+        default="file",
+        help="Target exporter for processed data (default: file)",
+    )
+    parser.add_argument(
+        "--gcp-project",
+        type=str,
+        default=None,
+        help="Google Cloud project ID for BigQuery export (fallback: GCP_PROJECT_ID)",
+    )
+    parser.add_argument(
+        "--bq-dataset",
+        type=str,
+        default=None,
+        help="BigQuery dataset ID (fallback: BIGQUERY_DATASET)",
+    )
+    parser.add_argument(
+        "--bq-table",
+        type=str,
+        default=None,
+        help="BigQuery table ID (fallback: BIGQUERY_TABLE)",
+    )
     args = parser.parse_args()
-    run_pipeline(output_path=args.output, limit=args.limit)
+    run_pipeline(
+        output_path=args.output,
+        limit=args.limit,
+        exporter=args.exporter,
+        bq_project=args.gcp_project,
+        bq_dataset=args.bq_dataset,
+        bq_table=args.bq_table,
+    )
 
 
 if __name__ == "__main__":
