@@ -12,7 +12,7 @@ A modular Python data pipeline with authentication handling, automated tests, an
 
 ## Getting Started
 
-### 1. Setup Virtual Environment
+### 1. Set Up Virtual Environment
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
