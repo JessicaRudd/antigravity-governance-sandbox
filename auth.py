@@ -5,6 +5,7 @@ and request header generation.
 """
 
 import datetime
+import logging
 import os
 import time
 from typing import Any, Callable, Dict, Optional, Union
@@ -12,6 +13,24 @@ from dotenv import load_dotenv
 
 # Load environment variables from .env if present
 load_dotenv()
+
+logger = logging.getLogger("auth")
+if not logger.handlers:
+    logger.addHandler(logging.NullHandler())
+
+
+def log_telemetry_fallback(
+    event: str,
+    details: Optional[Dict[str, Any]] = None,
+    level: int = logging.WARNING,
+) -> None:
+    """Log telemetry authentication events with safe fallback.
+
+    Provides resilient fallback logging when external telemetry or upstream services
+    are unavailable or encounter exceptions.
+    """
+    payload = details or {}
+    logger.log(level, "Auth telemetry event '%s': %s", event, payload)
 
 
 class TokenExpiredError(ValueError):
@@ -140,6 +159,22 @@ class AuthManager:
         """Hook to refresh the current token."""
         return self.refresh_credentials(new_token=new_token, expires_at=expires_at)
 
+    def handle_telemetry_fallback(
+        self,
+        event: str,
+        details: Optional[Dict[str, Any]] = None,
+        exc: Optional[Exception] = None,
+    ) -> None:
+        """Handle telemetry emission failure with structured local logging fallback.
+
+        Captures telemetry failures during authentication or token refresh cycles
+        and gracefully falls back to local logging to prevent pipeline crashes.
+        """
+        payload = dict(details) if details else {}
+        if exc is not None:
+            payload["error"] = str(exc)
+        logger.warning("Telemetry fallback invoked for '%s': %s", event, payload)
+
     def get_headers(self) -> Dict[str, str]:
         """Return standardized authorization headers for API requests."""
         if not (self.api_key and self.token):
@@ -152,9 +187,14 @@ class AuthManager:
                 try:
                     refreshed = self.refresh_credentials()
                 except Exception as err:
+                    self.handle_telemetry_fallback("token_refresh_failure", exc=err)
                     raise ValueError(f"Authentication token expired and refresh failed: {err}") from err
 
             if not refreshed or self.is_token_expired():
+                self.handle_telemetry_fallback(
+                    "token_expired",
+                    details={"expires_at": str(self.expires_at)},
+                )
                 raise TokenExpiredError(
                     "Authentication token has expired. Please refresh the token or provide valid credentials."
                 )

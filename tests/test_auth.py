@@ -108,3 +108,26 @@ def test_auth_manager_refresh_failure_raises():
     )
     with pytest.raises(ValueError, match="Authentication token expired and refresh failed"):
         auth.get_headers()
+
+
+def test_log_telemetry_fallback(caplog):
+    """Test log_telemetry_fallback records structured log message."""
+    import logging
+    from auth import log_telemetry_fallback
+
+    with caplog.at_level(logging.WARNING, logger="auth"):
+        log_telemetry_fallback("test_event", {"metric": 42})
+    assert "Auth telemetry event 'test_event'" in caplog.text
+    assert "'metric': 42" in caplog.text
+
+
+def test_auth_manager_handle_telemetry_fallback(caplog):
+    """Test handle_telemetry_fallback method logs fallback details."""
+    import logging
+
+    auth = AuthManager()
+    with caplog.at_level(logging.WARNING, logger="auth"):
+        auth.handle_telemetry_fallback("network_timeout", details={"retry": 1}, exc=RuntimeError("timeout"))
+    assert "Telemetry fallback invoked for 'network_timeout'" in caplog.text
+    assert "'retry': 1" in caplog.text
+    assert "'error': 'timeout'" in caplog.text
